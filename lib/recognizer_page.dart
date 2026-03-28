@@ -4,6 +4,8 @@ import 'package:image_picker/image_picker.dart';
 import 'package:flutter_math_fork/flutter_math.dart';
 import 'package:mathmate/math_recognizer.dart';
 import 'package:flutter/foundation.dart';
+import 'result_page.dart';
+import 'beautiful_result_page.dart';
 
 class RecognizerPage extends StatefulWidget {
   const RecognizerPage({super.key});
@@ -24,27 +26,21 @@ class _RecognizerPageState extends State<RecognizerPage> {
     final XFile? selected = await _picker.pickImage(source: source);
     if (selected == null) return;
 
-    setState(() {
-      _image = selected;
-      _isLoading = true;
-      _latexResult = null;
-    });
-
-    final result = await _recognizer.recognizeFromImage(selected);
-
     if (!mounted) return;
 
-    setState(() {
-      _isLoading = false;
-      _latexResult = result;
-    });
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => BeautifulResultPage(image: selected), // 将选中的图片传过去
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Principia 识别插件'),
+        title: const Text('公式识别插件 '),
         backgroundColor: Colors.blue.withValues(alpha: 0.1),
       ),
       body: Column(
