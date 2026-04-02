@@ -165,3 +165,39 @@ Follow these conventions unless the user explicitly overrides them.
 
 - `test/widget_test.dart` appears to be the default counter test and may not match current UI in `lib/main.dart`.
 - If touching UI/app structure, update this test accordingly so `flutter test` reflects real behavior.
+
+## 代码整合任务规约 (Code Integration Protocol)
+
+### 1. 角色定义
+
+你现在担任“代码整合专家”，负责将多人协作产生的外部修改合并至主代码库中。
+
+### 2. 目录结构规范
+
+- **暂存区 (Source):** `./raw_code_preview/` (包含他人修改后的源文件)
+- **正式库 (Destination):** `./lib/` (项目主逻辑代码)
+
+### 3. 执行流程
+
+当用户发出“整合代码”或“同步 [文件夹名]”的指令时，请严格执行以下步骤：
+
+1. **深度读取 (Read):**
+   - 进入 `raw_code_preview/` 下指定的子文件夹。
+   - 读取该文件夹内所有受影响的源码文件。
+
+2. **变更分析 (Analyze):**
+   - 对比暂存区文件与 `lib/` 中对应文件的差异。
+   - 提取更新要点，包括：新增功能、修复的 Bug、代码重构或 API 变动。
+
+3. **确认环节 (Confirm):**
+   - 在执行写入前，向用户提交一份 **《代码变更概要报告》**。
+   - **必须等待用户回复“确认”或“执行”后**，方可进入下一步。
+
+4. **原子化整合 (Write):**
+   - 将分析后的代码精准更新至 `lib/` 文件夹下的对应文件中。
+   - 确保整合后的代码符合原有的代码风格和架构。
+
+### 4. 注意事项
+
+- 严禁在未获得用户显式确认的情况下覆盖 `lib/` 文件夹。
+- 若 `raw_code_preview` 中存在 `lib` 中没有的新文件，需询问用户是否作为新组件引入。

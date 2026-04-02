@@ -31,11 +31,9 @@ class MathRecognizer {
         return 'Missing env config: VOLC_API_KEY / VOLC_MODEL_ID';
       }
 
-      // 读取图片并转为 Base64
       final bytes = await imageFile.readAsBytes();
       final String base64Image = base64Encode(bytes);
 
-      // 发起 HTTP 请求
       final response = await http.post(
         Uri.parse(baseUrl),
         headers: {
@@ -51,7 +49,15 @@ class MathRecognizer {
                 {
                   "type": "text",
                   "text":
-                      "你是一个数学专家。请直接提取图片中的数学公式并转化为标准的 LaTeX 代码。不要解释，不要说‘好的’，只返回代码本身。",
+                      "你是专业的数学题目识别工具，严格遵守以下规则：\n"
+                      "1. 只做图像文字与公式识别，绝对不解题、不解析、不计算、不生成答案。\n"
+                      "2. 完整识别题干内容，包括中文、数字、符号、数学公式。\n"
+                      "3. 输出格式严格为：\n"
+                      "   - 所有纯文字题干部分，单独占多行（每个小问换行）\n"
+                      "   - 所有数学公式部分，单独占一行，用标准LaTeX语法，不要用任何包裹符号\n"
+                      "4. 文字和公式必须完全分离，文字行里绝对不能包含任何公式，公式行里绝对不能包含任何文字。\n"
+                      "5. 多个小问（1）（2）（3）或①②③，每个小问单独换行。\n"
+                      "6. 只输出识别结果，不输出任何多余解释、开头、结尾、说明。",
                 },
                 {
                   "type": "image_url",
@@ -67,16 +73,11 @@ class MathRecognizer {
         final data = jsonDecode(utf8.decode(response.bodyBytes));
         String result = data['choices'][0]['message']['content'];
 
-        // --- 关键修复代码开始 ---
-        // 1. 去掉 Markdown 的代码块标记
         result = result.replaceAll('```latex', '').replaceAll('```', '');
-        // 2. 去掉 \( 和 \) 符号
         result = result.replaceAll('\\(', '').replaceAll('\\)', '');
-        // 3. 去掉 $ 符号
+        result = result.replaceAll('\\[', '').replaceAll('\\]', '');
         result = result.replaceAll('\$', '');
-        // 4. 去除首尾多余空格
         result = result.trim();
-        // --- 关键修复代码结束 ---
 
         return result;
       } else {

@@ -1,11 +1,20 @@
 import 'dart:io';
+import 'dart:typed_data';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_math_fork/flutter_math.dart';
-import 'package:mathmate/math_recognizer.dart'; // 假设你的项目名叫 mathmate
+import 'package:image/image.dart' as img;
+import 'package:image_picker/image_picker.dart';
+import 'package:mathmate/math_recognizer.dart';
+import 'package:open_file/open_file.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:pdf/widgets.dart' as pw;
 
 class BeautifulResultPage extends StatefulWidget {
   final XFile image;
+
   const BeautifulResultPage({super.key, required this.image});
 
   @override
@@ -14,142 +23,280 @@ class BeautifulResultPage extends StatefulWidget {
 
 class _BeautifulResultPageState extends State<BeautifulResultPage> {
   final MathRecognizer _recognizer = MathRecognizer();
+
   String? _latex;
   bool _isAnalyzing = true;
-  String _statusMessage = "AI 正在全力解析中...";
+  String _statusMessage = 'AI 正在全力解析中...';
+  Uint8List? _imageBytes;
+  final List<String> _textLines = <String>[];
+  final List<String> _formulaLines = <String>[];
 
   @override
   void initState() {
     super.initState();
+    _loadImageBytes();
     _startRecognition();
+  }
+
+  Future<void> _loadImageBytes() async {
+    _imageBytes = await widget.image.readAsBytes();
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   Future<void> _startRecognition() async {
     try {
-      final result = await _recognizer.recognizeFromImage(widget.image);
-      if (mounted) {
-        setState(() {
-          _latex = result;
-          _isAnalyzing = false;
-          _statusMessage = (result == null || result.isEmpty)
-              ? "解析失败，请确保公式清晰"
-              : "解析成功！";
-        });
+      final String? result = await _recognizer.recognizeFromImage(widget.image);
+      if (!mounted || result == null) {
+        return;
       }
+
+      final List<String> lines = result
+          .split('\n')
+          .map((String line) => line.trim())
+          .where((String line) => line.isNotEmpty)
+          .toList();
+
+      _textLines.clear();
+      _formulaLines.clear();
+
+      for (final String line in lines) {
+        if (_looksLikeFormula(line)) {
+          _formulaLines.add(line);
+        } else {
+          _textLines.add(line);
+        }
+      }
+
+      _latex = _formulaLines.isNotEmpty ? _formulaLines.first : null;
+
+      setState(() {
+        _isAnalyzing = false;
+        _statusMessage = '解析成功！';
+      });
+    } catch (e) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _isAnalyzing = false;
+        _statusMessage = '出错了: $e';
+      });
+    }
+  }
+
+  bool _looksLikeFormula(String text) {
+    return text.contains(r'\') ||
+        text.contains('_') ||
+        text.contains('^') ||
+        text.contains('{') ||
+        text.contains('}');
+  }
+
+  Future<Uint8List> _sharpenImage(Uint8List originalBytes) async {
+    try {
+      final img.Image? imageData = img.decodeImage(originalBytes);
+      if (imageData == null) {
+        return originalBytes;
+      }
+
+      img.adjustColor(imageData, contrast: 1.5, gamma: 1.1);
+      return Uint8List.fromList(img.encodeJpg(imageData, quality: 90));
+    } catch (e) {
+      debugPrint('图片处理失败: $e');
+      return originalBytes;
+    }
+  }
+
+  Future<void> _exportPdf() async {
+    if (_imageBytes == null) {
+      return;
+    }
+
+    try {
+      final Uint8List sharpBytes = await _sharpenImage(_imageBytes!);
+      final pw.Document pdf = pw.Document();
+      pdf.addPage(
+        pw.Page(
+          build: (pw.Context context) => pw.Image(pw.MemoryImage(sharpBytes)),
+        ),
+      );
+
+      if (kIsWeb) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Web端暂不支持PDF导出')),
+          );
+        }
+        return;
+      }
+
+      final Directory dir = await getApplicationDocumentsDirectory();
+      final File file = File('${dir.path}/mathmate_scan.pdf');
+      await file.writeAsBytes(await pdf.save());
+
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('PDF 已保存: ${file.path}')));
+      }
+      await OpenFile.open(file.path);
     } catch (e) {
       if (mounted) {
-        setState(() {
-          _isAnalyzing = false;
-          _statusMessage = "出错了: $e";
-        });
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('导出失败: $e')));
       }
+    }
+  }
+
+  void _copyLatex() {
+    if (_latex == null) {
+      return;
+    }
+
+    Clipboard.setData(ClipboardData(text: _latex!));
+    if (mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('✅ LaTeX 已复制')));
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      // 允许背景图延伸到状态栏下方
       extendBodyBehindAppBar: true,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new, color: Colors.white),
+          icon: const Icon(Icons.arrow_back, color: Colors.white),
           onPressed: () => Navigator.pop(context),
         ),
       ),
       body: Stack(
         children: [
-          // --- 第一层：全屏背景图片 (带 Hero) ---
           Positioned.fill(
-            child: Hero(
-              tag: 'math_pic', // 必须和上一页匹配
-              child: Image.file(
-                File(widget.image.path),
-                fit: BoxFit.cover, // 填充模式
-              ),
-            ),
+            child: _imageBytes != null
+                ? Image.memory(_imageBytes!, fit: BoxFit.cover)
+                : const SizedBox.shrink(),
           ),
-          // 为了让顶部的按钮更清晰，加一个淡淡的半透明遮罩
-          Positioned.fill(
-            child: Container(color: Colors.black.withValues(alpha: 0.3)),
-          ),
-
-          // --- 第二层：可拖拽滑动面板 (的核心) ---
+          Container(color: Colors.black26),
           DraggableScrollableSheet(
-            initialChildSize: 0.4, // 初始高度：屏幕的 40%
-            minChildSize: 0.15, // 最小高度：屏幕的 15%
-            maxChildSize: 0.9, // 最大高度：屏幕的 90%
-            builder: (BuildContext context, ScrollController scrollController) {
+            initialChildSize: 0.4,
+            minChildSize: 0.2,
+            maxChildSize: 0.9,
+            builder: (_, ScrollController controller) {
               return Container(
                 decoration: const BoxDecoration(
                   color: Colors.white,
-                  borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black26,
-                      blurRadius: 10,
-                      spreadRadius: 1,
-                    ),
-                  ],
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
                 ),
                 child: SingleChildScrollView(
-                  controller: scrollController, // 必须将此 controller 绑定
-                  padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
+                  controller: controller,
+                  padding: const EdgeInsets.all(24),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // --- 面板顶部的“小抓手”指示器 ---
                       Center(
                         child: Container(
                           width: 40,
                           height: 5,
-                          margin: const EdgeInsets.only(bottom: 20),
                           decoration: BoxDecoration(
                             color: Colors.grey[300],
-                            borderRadius: BorderRadius.circular(10),
+                            borderRadius: BorderRadius.circular(5),
                           ),
                         ),
                       ),
-
-                      // --- 标题和状态 ---
-                      Text(
-                        "解析结果",
+                      const SizedBox(height: 20),
+                      const Text(
+                        '识别结果',
                         style: TextStyle(
-                          fontSize: 22,
+                          fontSize: 20,
                           fontWeight: FontWeight.bold,
-                          color: Colors.grey[800],
                         ),
                       ),
                       const SizedBox(height: 8),
-                      Text(
-                        _statusMessage,
-                        style: TextStyle(
-                          color: _isAnalyzing ? Colors.blue : Colors.grey[600],
-                          fontSize: 14,
-                        ),
-                      ),
-                      const Divider(height: 30),
-
-                      // --- 动态内容区域 ---
+                      Text(_statusMessage),
+                      const Divider(height: 24),
                       if (_isAnalyzing)
-                        const Center(
-                          child: Padding(
-                            padding: EdgeInsets.all(20),
-                            child: CircularProgressIndicator(),
+                        const Center(child: CircularProgressIndicator())
+                      else ...[
+                        const Text(
+                          '题目内容',
+                          style: TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                        const SizedBox(height: 8),
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.grey[100],
+                            borderRadius: BorderRadius.circular(8),
                           ),
-                        )
-                      else if (_latex != null && _latex!.isNotEmpty)
-                        _buildResultArea()
-                      else
-                        const Center(
-                          child: Icon(
-                            Icons.error_outline,
-                            size: 50,
-                            color: Colors.amber,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: _textLines
+                                .map(
+                                  (String line) => Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 2,
+                                    ),
+                                    child: SelectableText(
+                                      line,
+                                      style: const TextStyle(fontSize: 14),
+                                    ),
+                                  ),
+                                )
+                                .toList(),
                           ),
                         ),
+                        const SizedBox(height: 20),
+                        if (_latex != null) ...[
+                          const Text(
+                            '公式预览（点击复制 LaTeX）',
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                          const SizedBox(height: 8),
+                          GestureDetector(
+                            onTap: _copyLatex,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                vertical: 10,
+                                horizontal: 6,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.blue[50],
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: SingleChildScrollView(
+                                scrollDirection: Axis.horizontal,
+                                child: Math.tex(
+                                  _latex!,
+                                  textStyle: const TextStyle(fontSize: 22),
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 30),
+                        ],
+                        Center(
+                          child: ElevatedButton.icon(
+                            onPressed: _exportPdf,
+                            icon: const Icon(Icons.picture_as_pdf),
+                            label: const Text('导出扫描锐化 PDF'),
+                            style: ElevatedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 28,
+                                vertical: 14,
+                              ),
+                              backgroundColor: Colors.blueAccent,
+                            ),
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -158,55 +305,6 @@ class _BeautifulResultPageState extends State<BeautifulResultPage> {
           ),
         ],
       ),
-    );
-  }
-
-  // 构建结果展示区（LaTex 和 渲染公式）
-  Widget _buildResultArea() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          "LaTeX 代码:",
-          style: TextStyle(
-            color: Colors.grey[600],
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        Container(
-          width: double.infinity,
-          margin: const EdgeInsets.only(top: 8, bottom: 20),
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: Colors.grey[100],
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: SelectableText(
-            _latex!,
-            style: const TextStyle(
-              fontFamily: 'monospace',
-              fontSize: 13,
-              color: Colors.blueGrey,
-            ),
-          ),
-        ),
-        Text(
-          "标准公式预览:",
-          style: TextStyle(
-            color: Colors.grey[600],
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        const SizedBox(height: 12),
-        // 这里使用了之前修复的 textStyle 语法
-        Center(
-          child: Math.tex(
-            _latex!,
-            mathStyle: MathStyle.display,
-            textStyle: TextStyle(fontSize: 28, color: Colors.grey[900]),
-          ),
-        ),
-      ],
     );
   }
 }
