@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -7,6 +8,8 @@ import 'package:flutter_math_fork/flutter_math.dart';
 import 'package:image/image.dart' as img;
 import 'package:image_picker/image_picker.dart';
 import 'package:mathmate/math_recognizer.dart';
+import 'package:mathmate/visualization/geometry_validator.dart';
+import 'package:mathmate/visualization/jxg_webview.dart';
 import 'package:open_file/open_file.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -29,6 +32,8 @@ class _BeautifulResultPageState extends State<BeautifulResultPage> {
   Uint8List? _imageBytes;
   final List<String> _textLines = <String>[];
   final List<String> _formulaLines = <String>[];
+  Map<String, dynamic>? _geometryScene;
+  String? _geometryMessage;
 
   @override
   void initState() {
@@ -49,7 +54,15 @@ class _BeautifulResultPageState extends State<BeautifulResultPage> {
       final String? result = await _recognizer.recognizeFromImage(
         XFile(widget.image.path),
       );
-      if (!mounted || result == null) {
+      if (!mounted) {
+        return;
+      }
+
+      if (result == null || result.trim().isEmpty) {
+        setState(() {
+          _isAnalyzing = false;
+          _statusMessage = '解析失败，请重试';
+        });
         return;
       }
 
@@ -72,6 +85,25 @@ class _BeautifulResultPageState extends State<BeautifulResultPage> {
 
       _latex = _formulaLines.isNotEmpty ? _formulaLines.first : null;
 
+      final Map<String, dynamic>? extractedScene = _tryExtractGeometryScene(
+        result,
+      );
+
+      if (extractedScene != null) {
+        final GeometryValidationResult validation =
+            const GeometryValidator().validate(extractedScene);
+        if (validation.isValid && validation.scene != null) {
+          _geometryScene = validation.scene!.toJson();
+          _geometryMessage = null;
+        } else {
+          _geometryScene = null;
+          _geometryMessage = validation.error;
+        }
+      } else {
+        _geometryScene = null;
+        _geometryMessage = '未检测到 GeometryJSON，可仅查看文本与公式结果。';
+      }
+
       setState(() {
         _isAnalyzing = false;
         _statusMessage = '解析成功！';
@@ -93,6 +125,47 @@ class _BeautifulResultPageState extends State<BeautifulResultPage> {
         text.contains('^') ||
         text.contains('{') ||
         text.contains('}');
+  }
+
+  Map<String, dynamic>? _tryExtractGeometryScene(String payload) {
+    final RegExp blockPattern = RegExp(
+      r'```(?:geometryjson|json)?\s*([\s\S]*?)```',
+      caseSensitive: false,
+    );
+    final Iterable<RegExpMatch> matches = blockPattern.allMatches(payload);
+
+    for (final RegExpMatch match in matches) {
+      final String candidate = (match.group(1) ?? '').trim();
+      final Map<String, dynamic>? decoded = _tryDecodeMap(candidate);
+      if (_isGeometryScene(decoded)) {
+        return decoded;
+      }
+    }
+
+    final Map<String, dynamic>? wholeDecoded = _tryDecodeMap(payload.trim());
+    if (_isGeometryScene(wholeDecoded)) {
+      return wholeDecoded;
+    }
+    return null;
+  }
+
+  Map<String, dynamic>? _tryDecodeMap(String value) {
+    try {
+      final dynamic decoded = jsonDecode(value);
+      if (decoded is Map<String, dynamic>) {
+        return decoded;
+      }
+    } catch (_) {
+      return null;
+    }
+    return null;
+  }
+
+  bool _isGeometryScene(Map<String, dynamic>? data) {
+    if (data == null) {
+      return false;
+    }
+    return data.containsKey('viewport') && data.containsKey('elements');
   }
 
   Future<Uint8List> _sharpenImage(Uint8List originalBytes) async {
@@ -283,6 +356,44 @@ class _BeautifulResultPageState extends State<BeautifulResultPage> {
                           ),
                           const SizedBox(height: 30),
                         ],
+                        const Text(
+                          '几何可视化',
+                          style: TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                        const SizedBox(height: 8),
+                        Container(
+                          height: 260,
+                          width: double.infinity,
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: Colors.blueGrey.shade100),
+                          ),
+                          clipBehavior: Clip.antiAlias,
+                          child: _geometryScene == null
+                              ? Center(
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(12),
+                                    child: Text(
+                                      _geometryMessage ?? '暂未生成可视化数据。',
+                                      textAlign: TextAlign.center,
+                                      style: const TextStyle(
+                                        color: Colors.blueGrey,
+                                      ),
+                                    ),
+                                  ),
+                                )
+                              : JxgWebView(
+                                  scene: _geometryScene!,
+                                  onEngineError: (String message) {
+                                    if (!mounted) return;
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(content: Text(message)),
+                                    );
+                                  },
+                                ),
+                        ),
+                        const SizedBox(height: 20),
                         Center(
                           child: ElevatedButton.icon(
                             onPressed: _exportPdf,

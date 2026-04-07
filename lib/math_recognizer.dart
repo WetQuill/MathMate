@@ -57,7 +57,8 @@ class MathRecognizer {
                       "   - 所有数学公式部分，单独占一行，用标准LaTeX语法，不要用任何包裹符号\n"
                       "4. 文字和公式必须完全分离，文字行里绝对不能包含任何公式，公式行里绝对不能包含任何文字。\n"
                       "5. 多个小问（1）（2）（3）或①②③，每个小问单独换行。\n"
-                      "6. 只输出识别结果，不输出任何多余解释、开头、结尾、说明。",
+                      "6. 若题目可几何可视化，请在末尾追加一个 ```geometryjson 代码块，格式为 {viewport,elements}。\n"
+                      "7. 除了识别结果和可选的 geometryjson 代码块外，不输出任何多余解释。",
                 },
                 {
                   "type": "image_url",
@@ -73,7 +74,7 @@ class MathRecognizer {
         final data = jsonDecode(utf8.decode(response.bodyBytes));
         String result = data['choices'][0]['message']['content'];
 
-        result = result.replaceAll('```latex', '').replaceAll('```', '');
+        result = result.replaceAll('```latex', '');
         result = result.replaceAll('\\(', '').replaceAll('\\)', '');
         result = result.replaceAll('\\[', '').replaceAll('\\]', '');
         result = result.replaceAll('\$', '');
