@@ -78,4 +78,33 @@ class SafeJsonParser {
 
     return List<double>.from(defaultValue);
   }
+
+  dynamic readValueCaseInsensitive(
+    Map<String, dynamic> map,
+    List<String> candidateKeys,
+  ) {
+    if (map.isEmpty || candidateKeys.isEmpty) {
+      return null;
+    }
+
+    for (final String key in candidateKeys) {
+      if (map.containsKey(key)) {
+        return map[key];
+      }
+    }
+
+    final Map<String, dynamic> lowered = <String, dynamic>{};
+    for (final MapEntry<String, dynamic> entry in map.entries) {
+      lowered[entry.key.toLowerCase()] = entry.value;
+    }
+
+    for (final String key in candidateKeys) {
+      final String normalized = key.toLowerCase();
+      if (lowered.containsKey(normalized)) {
+        return lowered[normalized];
+      }
+    }
+
+    return null;
+  }
 }

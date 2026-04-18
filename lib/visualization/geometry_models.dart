@@ -18,10 +18,22 @@ class Viewport {
     required SafeJsonParser parser,
   }) {
     return Viewport(
-      xMin: parser.safeToDouble(json['xMin'], -5),
-      xMax: parser.safeToDouble(json['xMax'], 5),
-      yMin: parser.safeToDouble(json['yMin'], -5),
-      yMax: parser.safeToDouble(json['yMax'], 5),
+      xMin: parser.safeToDouble(
+        parser.readValueCaseInsensitive(json, <String>['xMin', 'xmin']),
+        -5,
+      ),
+      xMax: parser.safeToDouble(
+        parser.readValueCaseInsensitive(json, <String>['xMax', 'xmax']),
+        5,
+      ),
+      yMin: parser.safeToDouble(
+        parser.readValueCaseInsensitive(json, <String>['yMin', 'ymin']),
+        -5,
+      ),
+      yMax: parser.safeToDouble(
+        parser.readValueCaseInsensitive(json, <String>['yMax', 'ymax']),
+        5,
+      ),
     );
   }
 
@@ -51,8 +63,14 @@ class GeometryElement {
     required SafeJsonParser parser,
   }) {
     final Map<String, dynamic> raw = parser.safeMap(json);
-    final String type = parser.safeString(raw['type'], 'unknown');
-    final String id = parser.safeString(raw['id'], 'unknown');
+    final String type = parser.safeString(
+      parser.readValueCaseInsensitive(raw, <String>['type']),
+      'unknown',
+    );
+    final String id = parser.safeString(
+      parser.readValueCaseInsensitive(raw, <String>['id']),
+      'unknown',
+    );
 
     _normalizeByType(raw, type, parser);
 
@@ -73,30 +91,52 @@ class GeometryElement {
     }
 
     if (type == 'point') {
-      raw['pos'] = parser.safePoint(raw['pos']);
-      raw['label'] = parser.safeString(raw['label'], raw['id']?.toString() ?? '');
+      raw['pos'] = parser.safePoint(
+        parser.readValueCaseInsensitive(raw, <String>['pos']),
+      );
+      raw['label'] = parser.safeString(
+        parser.readValueCaseInsensitive(raw, <String>['label']),
+        raw['id']?.toString() ?? '',
+      );
       return;
     }
 
     if (type == 'line') {
-      raw['p1'] = parser.safeString(raw['p1']);
-      raw['p2'] = parser.safeString(raw['p2']);
+      raw['p1'] = parser.safeString(
+        parser.readValueCaseInsensitive(raw, <String>['p1']),
+      );
+      raw['p2'] = parser.safeString(
+        parser.readValueCaseInsensitive(raw, <String>['p2']),
+      );
       return;
     }
 
     if (type == 'circle') {
-      raw['center'] = parser.safePoint(raw['center']);
-      raw['radius'] = parser.safeToDouble(raw['radius'], 1.0);
+      raw['center'] = parser.safePoint(
+        parser.readValueCaseInsensitive(raw, <String>['center']),
+      );
+      raw['radius'] = parser.safeToDouble(
+        parser.readValueCaseInsensitive(raw, <String>['radius']),
+        1.0,
+      );
       return;
     }
 
     if (type == 'dynamic_point') {
-      raw['targetId'] = parser.safeString(raw['targetId']);
-      raw['initialT'] = parser.safeToDouble(raw['initialT'], 0.25);
-      if (raw.containsKey('pos')) {
-        raw['pos'] = parser.safePoint(raw['pos']);
-      }
-      raw['label'] = parser.safeString(raw['label'], raw['id']?.toString() ?? '');
+      raw['targetId'] = parser.safeString(
+        parser.readValueCaseInsensitive(raw, <String>['targetId', 'targetid']),
+      );
+      raw['initialT'] = parser.safeToDouble(
+        parser.readValueCaseInsensitive(raw, <String>['initialT', 'initialt']),
+        0.25,
+      );
+      raw['pos'] = parser.safePoint(
+        parser.readValueCaseInsensitive(raw, <String>['pos']),
+      );
+      raw['label'] = parser.safeString(
+        parser.readValueCaseInsensitive(raw, <String>['label']),
+        raw['id']?.toString() ?? '',
+      );
     }
   }
 
@@ -114,10 +154,23 @@ class GeometryScene {
     required SafeJsonParser parser,
   }) {
     final Map<String, dynamic> safeJson = parser.safeMap(json);
-    final List<dynamic> rawElements = parser.safeList(safeJson['elements']);
+    final Map<String, dynamic> viewportRaw = parser.safeMap(
+      parser.readValueCaseInsensitive(
+            safeJson,
+            <String>['viewport'],
+          ) ??
+          <String, dynamic>{},
+    );
+    final List<dynamic> rawElements = parser.safeList(
+      parser.readValueCaseInsensitive(
+            safeJson,
+            <String>['elements'],
+          ) ??
+          <dynamic>[],
+    );
     return GeometryScene(
       viewport: Viewport.fromJson(
-        parser.safeMap(safeJson['viewport']),
+        viewportRaw,
         parser: parser,
       ),
       elements: rawElements

@@ -1,133 +1,300 @@
 import 'dart:io';
-import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_math_fork/flutter_math.dart';
 import 'package:image/image.dart' as img;
 import 'package:image_picker/image_picker.dart';
-import 'package:mathmate/math_recognizer.dart';
-import 'package:mathmate/visualization/response_extractor.dart';
+import 'package:mathmate/data/history_models.dart';
+import 'package:mathmate/data/history_repository.dart';
+import 'package:mathmate/models/pipeline_models.dart';
+import 'package:mathmate/models/pipeline_stage.dart';
+import 'package:mathmate/services/math_pipeline_service.dart';
 import 'package:mathmate/visualization/geometry_validator.dart';
 import 'package:mathmate/visualization/jxg_webview.dart';
+import 'package:mathmate/visualization/safe_json_parser.dart';
 import 'package:open_file/open_file.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:pdf/widgets.dart' as pw;
 
 class BeautifulResultPage extends StatefulWidget {
   final File image;
+  final MathHistory? history;
+  final String? heroTag;
 
-  const BeautifulResultPage({super.key, required this.image});
+  const BeautifulResultPage({
+    super.key,
+    required this.image,
+    this.history,
+    this.heroTag,
+  });
 
   @override
   State<BeautifulResultPage> createState() => _BeautifulResultPageState();
 }
 
 class _BeautifulResultPageState extends State<BeautifulResultPage> {
-  final MathRecognizer _recognizer = MathRecognizer();
+  final MathPipelineService _pipelineService = MathPipelineService();
 
-  String? _latex;
   bool _isAnalyzing = true;
-  String _statusMessage = 'AI 正在全力解析中...';
+  String _statusMessage = '准备开始处理...';
+
   Uint8List? _imageBytes;
-  final List<String> _textLines = <String>[];
-  final List<String> _formulaLines = <String>[];
+  String _questionMarkdown = '';
+  String _solutionMarkdown = '';
+  String? _formulaPreview;
   Map<String, dynamic>? _geometryScene;
   String? _geometryMessage;
+  List<String> _stageErrors = <String>[];
 
   @override
   void initState() {
     super.initState();
     _loadImageBytes();
-    _startRecognition();
+    _bootstrapPage();
+  }
+
+  Future<void> _bootstrapPage() async {
+    if (widget.history != null) {
+      _restoreFromHistory(widget.history!);
+      return;
+    }
+    await _runPipeline();
   }
 
   Future<void> _loadImageBytes() async {
     _imageBytes = await widget.image.readAsBytes();
-    if (mounted) {
-      setState(() {});
+    if (!mounted) {
+      return;
+    }
+    setState(() {});
+  }
+
+  Future<void> _runPipeline() async {
+    setState(() {
+      _isAnalyzing = true;
+      _statusMessage = 'AI 正在解析题目...';
+      _stageErrors = <String>[];
+    });
+
+    final PipelineResult result = await _pipelineService.runFromImage(
+      XFile(widget.image.path),
+      onStageChanged: (PipelineStage stage) {
+        if (!mounted) {
+          return;
+        }
+        setState(() {
+          _statusMessage = _messageForStage(stage);
+        });
+      },
+    );
+
+    if (!mounted) {
+      return;
+    }
+
+    final String questionMarkdown =
+        result.recognize?.questionMarkdown.trim() ?? '';
+    final String solutionMarkdown = result.solve?.solutionMarkdown.trim() ?? '';
+    final String formulaPreview = _extractFormulaPreview(
+      '$questionMarkdown\n$solutionMarkdown',
+    );
+    final String cleanedLatex = _cleanLatex(formulaPreview);
+
+    final VisualizeResult? visualize = result.visualize;
+    final String? geometryMessage = visualize?.scene != null
+        ? null
+        : visualize?.error ?? '当前未生成可视化数据。';
+
+    setState(() {
+      _isAnalyzing = false;
+      _questionMarkdown = questionMarkdown;
+      _solutionMarkdown = solutionMarkdown;
+      _formulaPreview = cleanedLatex.isEmpty ? null : cleanedLatex;
+      _geometryScene = visualize?.scene;
+      _geometryMessage = geometryMessage;
+      _stageErrors = List<String>.from(result.stageErrors);
+      _statusMessage = _stageErrors.isEmpty
+          ? '处理完成'
+          : '部分阶段失败，请检查下方提示';
+    });
+
+    if (result.recognize != null) {
+      _persistHistoryAsync();
     }
   }
 
-  Future<void> _startRecognition() async {
-    try {
-      final String? result = await _recognizer.recognizeFromImage(
-        XFile(widget.image.path),
-      );
-      if (!mounted) {
-        return;
-      }
+  void _restoreFromHistory(MathHistory history) {
+    final SafeJsonParser parser = const SafeJsonParser();
 
-      if (result == null || result.trim().isEmpty) {
-        setState(() {
-          _isAnalyzing = false;
-          _statusMessage = '解析失败，请重试';
-        });
-        return;
-      }
+    final GeometrySceneEmbedded? scene = history.geometryScene;
+    final Map<String, dynamic>? sceneMap = scene?.toMap();
 
-      final ExtractedResponse extracted = ResponseExtractor.split(result);
-      final String cleanFormulaText = extracted.cleanFormulaText;
+    final String formulaPreview = _extractFormulaPreview(history.latexResult);
+    final String cleanedLatex = _cleanLatex(formulaPreview);
 
-      final List<String> lines = cleanFormulaText
-          .split('\n')
-          .map((String line) => line.trim())
-          .where((String line) => line.isNotEmpty)
-          .toList();
+    final Map<String, dynamic>? normalizedScene = sceneMap == null
+        ? null
+        : _normalizeSceneMap(sceneMap, parser);
 
-      _textLines.clear();
-      _formulaLines.clear();
-
-      for (final String line in lines) {
-        if (_looksLikeFormula(line)) {
-          _formulaLines.add(line);
-        } else {
-          _textLines.add(line);
-        }
-      }
-
-      _latex = _formulaLines.isNotEmpty ? _formulaLines.first : null;
-
-      if (extracted.geometryJsonText != null) {
-        try {
-          final dynamic rawJson = jsonDecode(extracted.geometryJsonText!);
-          if (rawJson is! Map<String, dynamic>) {
-            _geometryScene = null;
-            _geometryMessage = 'GeometryJSON 格式错误：根节点必须是对象。';
-          } else {
-            final GeometryValidationResult validation =
-                const GeometryValidator().validate(rawJson);
-            if (validation.isValid && validation.scene != null) {
-              _geometryScene = validation.scene!.toJson();
-              _geometryMessage = null;
-            } else {
-              _geometryScene = null;
-              _geometryMessage = validation.error;
-            }
-          }
-        } catch (e) {
-          _geometryScene = null;
-          _geometryMessage = 'GeometryJSON 解析失败：$e';
-        }
+    Map<String, dynamic>? validatedScene;
+    String? geometryMessage;
+    if (normalizedScene != null) {
+      final GeometryValidationResult validation =
+          const GeometryValidator().validate(normalizedScene);
+      if (validation.isValid && validation.scene != null) {
+        validatedScene = validation.scene!.toJson();
       } else {
-        _geometryScene = null;
-        _geometryMessage = '未检测到 GeometryJSON，可仅查看文本与公式结果。';
+        geometryMessage = validation.error ?? '历史几何数据校验失败。';
       }
-
-      setState(() {
-        _isAnalyzing = false;
-        _statusMessage = '解析成功！';
-      });
-    } catch (e) {
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _isAnalyzing = false;
-        _statusMessage = '出错了: $e';
-      });
     }
+
+    setState(() {
+      _isAnalyzing = false;
+      _statusMessage = '已加载历史记录';
+      _questionMarkdown = history.ocrContent;
+      _solutionMarkdown = history.solutionMarkdown;
+      _formulaPreview = cleanedLatex.isEmpty ? null : cleanedLatex;
+      _geometryScene = validatedScene;
+      _geometryMessage = geometryMessage ??
+          (_geometryScene == null ? '历史记录中无可视化数据。' : null);
+      _stageErrors = <String>[];
+    });
+  }
+
+  Map<String, dynamic> _normalizeSceneMap(
+    Map<String, dynamic> scene,
+    SafeJsonParser parser,
+  ) {
+    final Map<String, dynamic> viewportRaw = parser.safeMap(
+      parser.readValueCaseInsensitive(scene, <String>['viewport']) ??
+          <String, dynamic>{},
+    );
+    final List<dynamic> elementsRaw = parser.safeList(
+      parser.readValueCaseInsensitive(scene, <String>['elements']) ??
+          <dynamic>[],
+    );
+
+    final Map<String, dynamic> normalizedViewport = <String, dynamic>{
+      'xMin': parser.safeToDouble(
+        parser.readValueCaseInsensitive(viewportRaw, <String>['xMin', 'xmin']),
+        -5.0,
+      ),
+      'xMax': parser.safeToDouble(
+        parser.readValueCaseInsensitive(viewportRaw, <String>['xMax', 'xmax']),
+        5.0,
+      ),
+      'yMin': parser.safeToDouble(
+        parser.readValueCaseInsensitive(viewportRaw, <String>['yMin', 'ymin']),
+        -5.0,
+      ),
+      'yMax': parser.safeToDouble(
+        parser.readValueCaseInsensitive(viewportRaw, <String>['yMax', 'ymax']),
+        5.0,
+      ),
+    };
+
+    final List<Map<String, dynamic>> normalizedElements = elementsRaw
+        .map((dynamic e) => parser.safeMap(e))
+        .toList();
+
+    return <String, dynamic>{
+      'viewport': normalizedViewport,
+      'elements': normalizedElements,
+    };
+  }
+
+  Future<void> _persistHistoryAsync() async {
+    try {
+      await HistoryRepository.instance.saveHistory(
+        sourceImage: widget.image,
+        ocrContent: _questionMarkdown,
+        solutionMarkdown: _solutionMarkdown,
+        latexResult: _cleanLatex(_formulaPreview ?? _solutionMarkdown),
+        sceneMap: _geometryScene,
+      );
+    } catch (e) {
+      debugPrint('save history failed: $e');
+    }
+  }
+
+  String _cleanLatex(String input) {
+    String text = input.trim();
+    if (text.isEmpty) {
+      return text;
+    }
+
+    text = text.replaceAllMapped(
+      RegExp(r'\\\\(begin|end)\{'),
+      (Match match) => '\\${match.group(1)}{',
+    );
+
+    text = text
+        .replaceAll(r'\begin{cases}', r'\begin{aligned}')
+        .replaceAll(r'\end{cases}', r'\end{aligned}');
+
+    final List<String> rows = text.split(r'\\');
+    if (rows.length > 1) {
+      final List<String> normalizedRows = rows.map((String row) {
+        final String cleaned = row.trim();
+        if (cleaned.isEmpty || cleaned.contains('&')) {
+          return cleaned;
+        }
+        return '& $cleaned';
+      }).toList();
+      text = normalizedRows.join(r'\\');
+    }
+
+    text = text.replaceFirst(RegExp(r'[，。；：、,.!?！？]+$'), '');
+    return text;
+  }
+
+  String _messageForStage(PipelineStage stage) {
+    switch (stage) {
+      case PipelineStage.idle:
+        return '等待开始';
+      case PipelineStage.recognizing:
+        return '正在识别题目文本...';
+      case PipelineStage.solving:
+        return '正在生成解答过程...';
+      case PipelineStage.visualizing:
+        return '正在生成可视化 JSON...';
+      case PipelineStage.completed:
+        return '处理完成';
+      case PipelineStage.failed:
+        return '流程失败';
+    }
+  }
+
+  String _extractFormulaPreview(String input) {
+    final RegExp displayMath = RegExp(r'\$\$([\s\S]*?)\$\$');
+    final RegExp inlineMath = RegExp(r'\$([^\$\n]+)\$');
+
+    final RegExpMatch? displayMatch = displayMath.firstMatch(input);
+    if (displayMatch != null) {
+      return (displayMatch.group(1) ?? '').trim();
+    }
+
+    final RegExpMatch? inlineMatch = inlineMath.firstMatch(input);
+    if (inlineMatch != null) {
+      return (inlineMatch.group(1) ?? '').trim();
+    }
+
+    final List<String> lines = input
+        .split('\n')
+        .map((String line) => line.trim())
+        .where((String line) => line.isNotEmpty)
+        .toList();
+
+    for (final String line in lines) {
+      if (_looksLikeFormula(line)) {
+        return line;
+      }
+    }
+
+    return '';
   }
 
   bool _looksLikeFormula(String text) {
@@ -135,7 +302,8 @@ class _BeautifulResultPageState extends State<BeautifulResultPage> {
         text.contains('_') ||
         text.contains('^') ||
         text.contains('{') ||
-        text.contains('}');
+        text.contains('}') ||
+        text.contains('=');
   }
 
   Future<Uint8List> _sharpenImage(Uint8List originalBytes) async {
@@ -195,17 +363,56 @@ class _BeautifulResultPageState extends State<BeautifulResultPage> {
     }
   }
 
-  void _copyLatex() {
-    if (_latex == null) {
+  void _copyFormula() {
+    final String? formula = _formulaPreview;
+    if (formula == null || formula.isEmpty) {
       return;
     }
 
-    Clipboard.setData(ClipboardData(text: _latex!));
+    Clipboard.setData(ClipboardData(text: formula));
     if (mounted) {
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text('✅ LaTeX 已复制')));
+      ).showSnackBar(const SnackBar(content: Text('✅ 公式已复制')));
     }
+  }
+
+  Widget _buildMarkdownBlock({
+    required String title,
+    required String content,
+    String emptyText = '暂无内容',
+  }) {
+    final String markdownText = content.trim().isEmpty ? emptyText : content;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
+        const SizedBox(height: 8),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: Colors.grey[100],
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: MarkdownBody(
+            data: markdownText,
+            selectable: true,
+            styleSheet: MarkdownStyleSheet.fromTheme(
+              Theme.of(context),
+            ).copyWith(
+              p: const TextStyle(fontSize: 14, height: 1.45),
+              h1: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+              h2: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              h3: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+              code: const TextStyle(fontSize: 13, fontFamily: 'monospace'),
+              blockquote: const TextStyle(color: Colors.blueGrey),
+            ),
+          ),
+        ),
+      ],
+    );
   }
 
   @override
@@ -221,18 +428,23 @@ class _BeautifulResultPageState extends State<BeautifulResultPage> {
         ),
       ),
       body: Stack(
-        children: [
+        children: <Widget>[
           Positioned.fill(
-            child: _imageBytes != null
-                ? Image.memory(_imageBytes!, fit: BoxFit.cover)
-                : const SizedBox.shrink(),
+            child: _imageBytes == null
+                ? const SizedBox.shrink()
+                : (widget.heroTag == null
+                      ? Image.memory(_imageBytes!, fit: BoxFit.cover)
+                      : Hero(
+                          tag: widget.heroTag!,
+                          child: Image.memory(_imageBytes!, fit: BoxFit.cover),
+                        )),
           ),
           Container(color: Colors.black26),
           DraggableScrollableSheet(
-            initialChildSize: 0.4,
+            initialChildSize: 0.45,
             minChildSize: 0.2,
-            maxChildSize: 0.9,
-            builder: (_, ScrollController controller) {
+            maxChildSize: 0.92,
+            builder: (BuildContext context, ScrollController controller) {
               return Container(
                 decoration: const BoxDecoration(
                   color: Colors.white,
@@ -243,7 +455,7 @@ class _BeautifulResultPageState extends State<BeautifulResultPage> {
                   padding: const EdgeInsets.all(24),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
+                    children: <Widget>[
                       Center(
                         child: Container(
                           width: 40,
@@ -264,52 +476,43 @@ class _BeautifulResultPageState extends State<BeautifulResultPage> {
                       ),
                       const SizedBox(height: 8),
                       Text(_statusMessage),
+                      if (_stageErrors.isNotEmpty) ...<Widget>[
+                        const SizedBox(height: 8),
+                        ..._stageErrors.map(
+                          (String error) => Text(
+                            '• $error',
+                            style: const TextStyle(color: Colors.redAccent),
+                          ),
+                        ),
+                      ],
                       const Divider(height: 24),
                       if (_isAnalyzing)
                         const Center(child: CircularProgressIndicator())
-                      else ...[
-                        const Text(
-                          '题目内容',
-                          style: TextStyle(fontWeight: FontWeight.bold),
+                      else ...<Widget>[
+                        _buildMarkdownBlock(
+                          title: '题目内容（OCR）',
+                          content: _questionMarkdown,
+                          emptyText: '题目识别为空',
                         ),
-                        const SizedBox(height: 8),
-                        Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: Colors.grey[100],
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: _textLines
-                                .map(
-                                  (String line) => Padding(
-                                    padding: const EdgeInsets.symmetric(
-                                      vertical: 2,
-                                    ),
-                                    child: SelectableText(
-                                      line,
-                                      style: const TextStyle(fontSize: 14),
-                                    ),
-                                  ),
-                                )
-                                .toList(),
-                          ),
+                        const SizedBox(height: 16),
+                        _buildMarkdownBlock(
+                          title: '解答过程（Markdown）',
+                          content: _solutionMarkdown,
+                          emptyText: '解题阶段未返回内容',
                         ),
                         const SizedBox(height: 20),
-                        if (_latex != null) ...[
+                        if (_formulaPreview != null) ...<Widget>[
                           const Text(
-                            '公式预览（点击复制 LaTeX）',
+                            '公式预览（点击复制）',
                             style: TextStyle(fontWeight: FontWeight.bold),
                           ),
                           const SizedBox(height: 8),
                           GestureDetector(
-                            onTap: _copyLatex,
+                            onTap: _copyFormula,
                             child: Container(
                               padding: const EdgeInsets.symmetric(
                                 vertical: 10,
-                                horizontal: 6,
+                                horizontal: 8,
                               ),
                               decoration: BoxDecoration(
                                 color: Colors.blue[50],
@@ -318,13 +521,13 @@ class _BeautifulResultPageState extends State<BeautifulResultPage> {
                               child: SingleChildScrollView(
                                 scrollDirection: Axis.horizontal,
                                 child: Math.tex(
-                                  _latex!,
+                                  _formulaPreview!,
                                   textStyle: const TextStyle(fontSize: 22),
                                 ),
                               ),
                             ),
                           ),
-                          const SizedBox(height: 30),
+                          const SizedBox(height: 20),
                         ],
                         const Text(
                           '几何可视化',
@@ -332,7 +535,7 @@ class _BeautifulResultPageState extends State<BeautifulResultPage> {
                         ),
                         const SizedBox(height: 8),
                         Container(
-                          height: 260,
+                          height: 280,
                           width: double.infinity,
                           decoration: BoxDecoration(
                             color: Colors.white,
@@ -356,7 +559,9 @@ class _BeautifulResultPageState extends State<BeautifulResultPage> {
                               : JxgWebView(
                                   scene: _geometryScene!,
                                   onEngineError: (String message) {
-                                    if (!mounted) return;
+                                    if (!mounted) {
+                                      return;
+                                    }
                                     ScaffoldMessenger.of(context).showSnackBar(
                                       SnackBar(content: Text(message)),
                                     );

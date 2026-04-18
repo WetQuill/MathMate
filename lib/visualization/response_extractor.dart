@@ -17,6 +17,19 @@ class ResponseExtractor {
   );
 
   static ExtractedResponse split(String fullResponse) {
+    final String? geometryJsonText = extractGeometryJsonText(fullResponse);
+    if (geometryJsonText == null) {
+      return ExtractedResponse(cleanFormulaText: fullResponse.trim());
+    }
+
+    final String cleaned = removeGeometryJsonBlock(fullResponse);
+    return ExtractedResponse(
+      cleanFormulaText: cleaned,
+      geometryJsonText: geometryJsonText,
+    );
+  }
+
+  static String removeGeometryJsonBlock(String fullResponse) {
     final Iterable<RegExpMatch> matches = _blockPattern.allMatches(fullResponse);
 
     for (final RegExpMatch match in matches) {
@@ -26,21 +39,33 @@ class ResponseExtractor {
       }
 
       final String matchedText = match.group(0) ?? '';
-      final String cleaned = fullResponse.replaceFirst(matchedText, '').trim();
-      return ExtractedResponse(
-        cleanFormulaText: cleaned,
-        geometryJsonText: blockContent,
-      );
+      return fullResponse.replaceFirst(matchedText, '').trim();
     }
 
     if (_isGeometryJson(fullResponse.trim())) {
-      return ExtractedResponse(
-        cleanFormulaText: '',
-        geometryJsonText: fullResponse.trim(),
-      );
+      return '';
     }
 
-    return ExtractedResponse(cleanFormulaText: fullResponse.trim());
+    return fullResponse.trim();
+  }
+
+  static String? extractGeometryJsonText(String fullResponse) {
+    final Iterable<RegExpMatch> matches = _blockPattern.allMatches(fullResponse);
+
+    for (final RegExpMatch match in matches) {
+      final String blockContent = (match.group(1) ?? '').trim();
+      if (!_isGeometryJson(blockContent)) {
+        continue;
+      }
+
+      return blockContent;
+    }
+
+    if (_isGeometryJson(fullResponse.trim())) {
+      return fullResponse.trim();
+    }
+
+    return null;
   }
 
   static bool _isGeometryJson(String text) {

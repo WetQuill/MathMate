@@ -7,6 +7,7 @@ import 'package:mathmate/math_recognizer.dart';
 import 'package:mathmate/visualization/geometry_validator.dart';
 import 'package:mathmate/visualization/response_extractor.dart';
 
+@Deprecated('Use BeautifulResultPage instead. This page is no longer in use.')
 class ResultPage extends StatefulWidget {
   final XFile image; // 接收传递过来的图片
 
