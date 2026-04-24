@@ -3,19 +3,22 @@ import 'dart:io';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:mathmate/beautiful_result_page.dart';
+import 'package:mathmate/pages/chat_home_page.dart';
 import 'package:mathmate/geogebra_page.dart';
+import 'package:mathmate/data/conversation_repository.dart';
 import 'package:mathmate/data/history_repository.dart';
 import 'package:mathmate/data/video_recommendations.dart';
 import 'package:mathmate/grade_selection_page.dart';
 import 'package:mathmate/history_list_page.dart';
+import 'package:mathmate/pages/video_player_page.dart';
 import 'package:mathmate/profile_page.dart';
 import 'package:mathmate/services/scanner_service.dart';
 import 'package:mathmate/services/video_recommendation_service.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await HistoryRepository.instance.init();
+  await ConversationRepository.instance.init();
 
   final bool isFirst = await HistoryRepository.instance.isFirstLaunch();
   runApp(MathMateApp(checkFirstLaunch: isFirst));
@@ -53,20 +56,13 @@ class _MainScreenState extends State<MainScreen> {
   @override
   void initState() {
     super.initState();
-    _pages = const <Widget>[
-      QuestionHomePage(),
-      NotesPage(),
-      ProfilePage(),
-    ];
+    _pages = const <Widget>[QuestionHomePage(), NotesPage(), ProfilePage()];
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: IndexedStack(
-        index: _currentIndex,
-        children: _pages,
-      ),
+      body: IndexedStack(index: _currentIndex, children: _pages),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _currentIndex,
         onTap: (int index) {
@@ -107,6 +103,7 @@ class _QuestionHomePageState extends State<QuestionHomePage> {
   final ScannerService _scannerService = ScannerService();
   final VideoRecommendationService _recommendationService =
       VideoRecommendationService();
+  final TextEditingController _searchController = TextEditingController();
 
   bool _isScanning = false;
   String _scanStatus = '拍照难题';
@@ -117,6 +114,23 @@ class _QuestionHomePageState extends State<QuestionHomePage> {
   void initState() {
     super.initState();
     _loadGradeLevelAndVideos();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  void _openSearchChat() {
+    final String query = _searchController.text.trim();
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => ChatHomePage(
+          initialQuery: query.isNotEmpty ? query : null,
+        ),
+      ),
+    );
   }
 
   Future<void> _loadGradeLevelAndVideos() async {
@@ -136,16 +150,52 @@ class _QuestionHomePageState extends State<QuestionHomePage> {
     });
 
     try {
-      final List<String> keywords =
-          await _recommendationService.extractKeywords('函数 椭圆 几何');
+      // 模拟网络请求延迟，确保有足够的时间显示刷新动画
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+      
+      final List<String> keywords = await _recommendationService
+          .extractKeywords('函数 椭圆 几何');
       if (keywords.isNotEmpty) {
-        final List<VideoInfo> matched =
-            getVideosByKeywords(keywords);
+        final List<VideoInfo> matched = getVideosByKeywords(keywords);
         if (matched.isNotEmpty) {
           setState(() {
             _recommendedVideos = matched;
           });
+        } else {
+          // 没有匹配的视频
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('暂无相关视频推荐'),
+                duration: Duration(seconds: 2),
+              ),
+            );
+          }
         }
+      } else {
+        // 关键词提取失败
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('无法获取推荐关键词'),
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      // 网络请求失败
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('网络请求失败: ${e.toString()}'),
+            duration: const Duration(seconds: 3),
+            action: SnackBarAction(
+              label: '重试',
+              onPressed: _onRefresh,
+            ),
+          ),
+        );
       }
     } finally {
       if (mounted) {
@@ -199,6 +249,9 @@ class _QuestionHomePageState extends State<QuestionHomePage> {
       body: SafeArea(
         child: RefreshIndicator(
           onRefresh: _onRefresh,
+          color: const Color(0xFF3F51B5),
+          backgroundColor: Colors.white,
+          displacement: 40.0,
           child: SingleChildScrollView(
             physics: const AlwaysScrollableScrollPhysics(),
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
@@ -216,7 +269,10 @@ class _QuestionHomePageState extends State<QuestionHomePage> {
                   children: <Widget>[
                     const Text(
                       '数学视频推荐',
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                     if (_isRefreshing)
                       const SizedBox(
@@ -254,13 +310,25 @@ class _QuestionHomePageState extends State<QuestionHomePage> {
         children: <Widget>[
           const Icon(Icons.search, color: Colors.blueGrey),
           const SizedBox(width: 8),
-          const Expanded(
+          Expanded(
             child: TextField(
-              decoration: InputDecoration(
-                hintText: '搜索题目或知识点',
+              controller: _searchController,
+              decoration: const InputDecoration(
+                hintText: '搜索题目或问蓝心助手...',
                 border: InputBorder.none,
               ),
+              onSubmitted: (_) => _openSearchChat(),
             ),
+          ),
+          IconButton(
+            onPressed: () {
+              Navigator.of(
+                context,
+              ).push(MaterialPageRoute(
+                      builder: (_) => const ChatHomePage(),
+                    ));
+            },
+            icon: const Icon(Icons.chat_bubble_outline_rounded),
           ),
           IconButton(
             onPressed: () {
@@ -316,7 +384,9 @@ class _QuestionHomePageState extends State<QuestionHomePage> {
                       ),
                       boxShadow: <BoxShadow>[
                         BoxShadow(
-                          color: const Color(0xFF4C6FFF).withValues(alpha: 0.35),
+                          color: const Color(
+                            0xFF4C6FFF,
+                          ).withValues(alpha: 0.35),
                           blurRadius: 26,
                           offset: const Offset(0, 8),
                         ),
@@ -350,10 +420,7 @@ class _QuestionHomePageState extends State<QuestionHomePage> {
             ),
           ),
           const SizedBox(height: 4),
-          Text(
-            _scanStatus,
-            style: TextStyle(color: Colors.blueGrey.shade600),
-          ),
+          Text(_scanStatus, style: TextStyle(color: Colors.blueGrey.shade600)),
         ],
       ),
     );
@@ -419,7 +486,10 @@ class _QuestionHomePageState extends State<QuestionHomePage> {
                   'name': '函数绘图',
                   'onTap': () {
                     Navigator.of(context).push(
-                      MaterialPageRoute(builder: (_) => const GeogebraPage()),
+                      MaterialPageRoute(
+                        builder: (_) =>
+                            const GeogebraPage(initialExpression: 'f(x) = x^2'),
+                      ),
                     );
                   },
                 },
@@ -436,7 +506,10 @@ class _QuestionHomePageState extends State<QuestionHomePage> {
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: <Widget>[
-                      Icon(tool['icon'] as IconData, color: const Color(0xFF3F51B5)),
+                      Icon(
+                        tool['icon'] as IconData,
+                        color: const Color(0xFF3F51B5),
+                      ),
                       const SizedBox(height: 4),
                       Text(
                         tool['name'] as String,
@@ -459,10 +532,7 @@ class _QuestionHomePageState extends State<QuestionHomePage> {
     if (videos.isEmpty) {
       return Container(
         padding: const EdgeInsets.all(16),
-        child: const Text(
-          '下拉刷新获取推荐视频',
-          style: TextStyle(color: Colors.grey),
-        ),
+        child: const Text('下拉刷新获取推荐视频', style: TextStyle(color: Colors.grey)),
       );
     }
 
@@ -480,8 +550,7 @@ class _QuestionHomePageState extends State<QuestionHomePage> {
       ),
     );
   }
-
-  }
+}
 
 class NotesPage extends StatelessWidget {
   const NotesPage({super.key});
@@ -512,8 +581,10 @@ class _FunctionWavePainter extends CustomPainter {
     final Path path2 = Path();
 
     for (double x = 0; x <= size.width; x += 1) {
-      final double y1 = size.height * 0.58 + 18 * _sinLike(x / size.width * 6.28);
-      final double y2 = size.height * 0.48 + 12 * _sinLike(x / size.width * 9.42 + 0.5);
+      final double y1 =
+          size.height * 0.58 + 18 * _sinLike(x / size.width * 6.28);
+      final double y2 =
+          size.height * 0.48 + 12 * _sinLike(x / size.width * 9.42 + 0.5);
       if (x == 0) {
         path1.moveTo(x, y1);
         path2.moveTo(x, y2);
@@ -524,7 +595,10 @@ class _FunctionWavePainter extends CustomPainter {
     }
 
     canvas.drawPath(path1, paint);
-    canvas.drawPath(path2, paint..color = const Color(0xFFB8C6FF).withValues(alpha: 0.4));
+    canvas.drawPath(
+      path2,
+      paint..color = const Color(0xFFB8C6FF).withValues(alpha: 0.4),
+    );
   }
 
   double _sinLike(double x) {
@@ -562,11 +636,13 @@ class _VideoCardState extends State<_VideoCard> {
     }
   }
 
-  Future<void> _openVideo() async {
-    final Uri url = Uri.parse(widget.video.url);
-    if (await canLaunchUrl(url)) {
-      await launchUrl(url, mode: LaunchMode.externalApplication);
-    }
+  void _openVideo() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) =>
+            VideoPlayerPage(title: widget.video.title, bvId: widget.video.bvId),
+      ),
+    );
   }
 
   @override
@@ -590,81 +666,91 @@ class _VideoCardState extends State<_VideoCard> {
           borderRadius: BorderRadius.circular(12),
           child: Stack(
             fit: StackFit.expand,
-          children: <Widget>[
-            if (_coverUrl != null && _coverUrl!.isNotEmpty)
-              CachedNetworkImage(
-                imageUrl: _coverUrl!,
-                fit: BoxFit.cover,
-                placeholder: (BuildContext context, String url) =>
-                    Container(color: Colors.grey[200]),
-                errorWidget: (BuildContext context, String url, Object error) =>
-                    Container(
+            children: <Widget>[
+              if (_coverUrl != null && _coverUrl!.isNotEmpty)
+                CachedNetworkImage(
+                  imageUrl: _coverUrl!,
+                  fit: BoxFit.cover,
+                  placeholder: (BuildContext context, String url) =>
+                      Container(color: Colors.grey[200]),
+                  errorWidget:
+                      (BuildContext context, String url, Object error) =>
+                          Container(
+                            color: const Color(0xFFE8EEFF),
+                            child: const Icon(
+                              Icons.video_library,
+                              color: Color(0xFF3F51B5),
+                              size: 40,
+                            ),
+                          ),
+                )
+              else
+                Container(
                   color: const Color(0xFFE8EEFF),
-                  child: const Icon(Icons.video_library,
-                      color: Color(0xFF3F51B5), size: 40),
-                ),
-              )
-            else
-              Container(
-                color: const Color(0xFFE8EEFF),
-                child: const Icon(Icons.video_library,
-                    color: Color(0xFF3F51B5), size: 40),
-              ),
-            Positioned(
-              bottom: 0,
-              left: 0,
-              right: 0,
-              child: Container(
-                padding: const EdgeInsets.all(8),
-                decoration: const BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: <Color>[Colors.transparent, Colors.black54],
+                  child: const Icon(
+                    Icons.video_library,
+                    color: Color(0xFF3F51B5),
+                    size: 40,
                   ),
                 ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: <Widget>[
-                    Text(
-                      widget.video.title,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+              Positioned(
+                bottom: 0,
+                left: 0,
+                right: 0,
+                child: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: <Color>[Colors.transparent, Colors.black54],
                     ),
-                    const SizedBox(height: 2),
-                    Text(
-                      widget.video.subtitle,
-                      style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.8),
-                        fontSize: 10,
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: <Widget>[
+                      Text(
+                        widget.video.title,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
+                      const SizedBox(height: 2),
+                      Text(
+                        widget.video.subtitle,
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.8),
+                          fontSize: 10,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
                 ),
               ),
-            ),
-            const Positioned(
-              top: 8,
-              right: 8,
-              child: CircleAvatar(
-                radius: 14,
-                backgroundColor: Colors.white,
-                child: Icon(Icons.play_arrow,
-                    color: Color(0xFF3F51B5), size: 18),
+              const Positioned(
+                top: 8,
+                right: 8,
+                child: CircleAvatar(
+                  radius: 14,
+                  backgroundColor: Colors.white,
+                  child: Icon(
+                    Icons.play_arrow,
+                    color: Color(0xFF3F51B5),
+                    size: 18,
+                  ),
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
-    ),
-  );
-}
+    );
+  }
 }

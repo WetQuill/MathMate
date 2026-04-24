@@ -30,7 +30,9 @@ class ResponseExtractor {
   }
 
   static String removeGeometryJsonBlock(String fullResponse) {
-    final Iterable<RegExpMatch> matches = _blockPattern.allMatches(fullResponse);
+    final Iterable<RegExpMatch> matches = _blockPattern.allMatches(
+      fullResponse,
+    );
 
     for (final RegExpMatch match in matches) {
       final String blockContent = (match.group(1) ?? '').trim();
@@ -50,7 +52,9 @@ class ResponseExtractor {
   }
 
   static String? extractGeometryJsonText(String fullResponse) {
-    final Iterable<RegExpMatch> matches = _blockPattern.allMatches(fullResponse);
+    final Iterable<RegExpMatch> matches = _blockPattern.allMatches(
+      fullResponse,
+    );
 
     for (final RegExpMatch match in matches) {
       final String blockContent = (match.group(1) ?? '').trim();

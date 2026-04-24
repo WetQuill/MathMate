@@ -12,10 +12,7 @@ class SolveResult {
   final String solutionMarkdown;
   final String rawOutput;
 
-  const SolveResult({
-    required this.solutionMarkdown,
-    required this.rawOutput,
-  });
+  const SolveResult({required this.solutionMarkdown, required this.rawOutput});
 }
 
 class VisualizeResult {

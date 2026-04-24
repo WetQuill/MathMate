@@ -18,9 +18,6 @@ class OcrService {
       modelEnv: _ocrModelEnv,
     );
 
-    return RecognizeResult(
-      questionMarkdown: raw.trim(),
-      rawOutput: raw,
-    );
+    return RecognizeResult(questionMarkdown: raw.trim(), rawOutput: raw);
   }
 }

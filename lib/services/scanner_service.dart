@@ -1,53 +1,63 @@
 import 'dart:io';
 
-import 'package:edge_detection/edge_detection.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:path/path.dart' as path;
-import 'package:path_provider/path_provider.dart';
-import 'package:permission_handler/permission_handler.dart';
+import 'package:image_cropper/image_cropper.dart';
+import 'package:image_picker/image_picker.dart';
 
 class ScannerService {
+  final ImagePicker _picker = ImagePicker();
+
   Future<File?> startScanning(BuildContext context) async {
     try {
       if (kIsWeb) {
-        debugPrint('ScannerService: edge detection is not supported on web.');
+        debugPrint('ScannerService: image cropping is not supported on web.');
         return null;
       }
       if (!context.mounted) {
         return null;
       }
 
-      final PermissionStatus status = await Permission.camera.status;
-      PermissionStatus grantedStatus = status;
+      final XFile? photo = await _picker.pickImage(
+        source: ImageSource.camera,
+        imageQuality: 90,
+      );
 
-      if (!status.isGranted) {
-        grantedStatus = await Permission.camera.request();
-      }
-
-      if (!grantedStatus.isGranted) {
-        if (grantedStatus.isPermanentlyDenied) {
-          debugPrint('ScannerService: camera permission permanently denied.');
-        }
-        debugPrint('ScannerService: camera permission denied.');
+      if (photo == null) {
+        debugPrint('ScannerService: user cancelled taking photo.');
         return null;
       }
 
-      final Directory tempDir = await getTemporaryDirectory();
-      final String filename =
-          'scan_${DateTime.now().millisecondsSinceEpoch}.jpg';
-      final String outputPath = path.join(tempDir.path, filename);
+      final CroppedFile? croppedFile = await ImageCropper().cropImage(
+        sourcePath: photo.path,
+        uiSettings: <PlatformUiSettings>[
+          AndroidUiSettings(
+            toolbarTitle: '裁剪',
+            toolbarColor: Colors.black,
+            toolbarWidgetColor: Colors.white,
+            activeControlsWidgetColor: const Color(0xFF4C6FFF),
+            initAspectRatio: CropAspectRatioPreset.original,
+            lockAspectRatio: false,
+            hideBottomControls: false,
+          ),
+          IOSUiSettings(
+            title: '裁剪',
+            cancelButtonTitle: '取消',
+            doneButtonTitle: '完成',
+          ),
+        ],
+      );
 
-      final bool isSuccess = await EdgeDetection.detectEdge(outputPath);
-
-      if (!isSuccess) {
-        debugPrint('ScannerService: user cancelled scanning.');
+      if (croppedFile == null) {
+        debugPrint('ScannerService: user cancelled cropping.');
         return null;
       }
 
-      final File scannedFile = File(outputPath);
+      final File scannedFile = File(croppedFile.path);
       if (!await scannedFile.exists()) {
-        debugPrint('ScannerService: scanned file not found at $outputPath');
+        debugPrint(
+          'ScannerService: cropped file not found at ${croppedFile.path}',
+        );
         return null;
       }
 

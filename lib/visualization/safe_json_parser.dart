@@ -59,7 +59,10 @@ class SafeJsonParser {
     return <dynamic>[];
   }
 
-  List<double> safePoint(dynamic value, {List<double> defaultValue = const <double>[0.0, 0.0]}) {
+  List<double> safePoint(
+    dynamic value, {
+    List<double> defaultValue = const <double>[0.0, 0.0],
+  }) {
     final List<dynamic> list = safeList(value);
     if (list.length >= 2) {
       return <double>[

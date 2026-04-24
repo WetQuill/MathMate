@@ -17,9 +17,6 @@ class SolverService {
       modelEnv: _solverModelEnv,
     );
 
-    return SolveResult(
-      solutionMarkdown: raw.trim(),
-      rawOutput: raw,
-    );
+    return SolveResult(solutionMarkdown: raw.trim(), rawOutput: raw);
   }
 }

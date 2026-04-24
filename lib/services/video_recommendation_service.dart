@@ -5,7 +5,8 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
 
 class VideoRecommendationService {
-  static const String _apiUrl = 'https://api-ai.vivo.com.cn/v1/chat/completions';
+  static const String _apiUrl =
+      'https://api-ai.vivo.com.cn/v1/chat/completions';
   static const String _apiKeyEnv = 'VIVO_API_KEY';
   static const String _modelEnv = 'VIVO_MODEL_ID';
   static const String _defaultModel = 'vivo-BlueLM-TB';
@@ -30,7 +31,8 @@ class VideoRecommendationService {
       }
 
       final String model = (dotenv.env[_modelEnv] ?? _defaultModel).trim();
-      final String prompt = '''
+      final String prompt =
+          '''
 请从以下数学题目中提取关键词（数学概念、题型类别等），只返回关键词，用逗号分隔，最多返回5个关键词。
 
 题目内容：
@@ -47,14 +49,16 @@ $text
         'temperature': 0.3,
       };
 
-      final http.Response response = await http.post(
-        Uri.parse(_apiUrl),
-        headers: <String, String>{
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $apiKey',
-        },
-        body: jsonEncode(body),
-      ).timeout(const Duration(seconds: 30));
+      final http.Response response = await http
+          .post(
+            Uri.parse(_apiUrl),
+            headers: <String, String>{
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $apiKey',
+            },
+            body: jsonEncode(body),
+          )
+          .timeout(const Duration(seconds: 30));
 
       if (response.statusCode == 200) {
         final Map<String, dynamic> data = jsonDecode(response.body);

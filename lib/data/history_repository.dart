@@ -66,10 +66,9 @@ class HistoryRepository {
     await init();
     final Isar isar = _isar!;
 
-    yield* isar.mathHistorys
-        .where()
-        .sortByTimestampDesc()
-        .watch(fireImmediately: true);
+    yield* isar.mathHistorys.where().sortByTimestampDesc().watch(
+      fireImmediately: true,
+    );
   }
 
   Future<void> deleteHistory(Id id) async {

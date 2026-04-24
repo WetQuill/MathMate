@@ -74,11 +74,7 @@ class GeometryElement {
 
     _normalizeByType(raw, type, parser);
 
-    return GeometryElement(
-      id: id,
-      type: type,
-      raw: raw,
-    );
+    return GeometryElement(id: id, type: type, raw: raw);
   }
 
   static void _normalizeByType(
@@ -155,30 +151,19 @@ class GeometryScene {
   }) {
     final Map<String, dynamic> safeJson = parser.safeMap(json);
     final Map<String, dynamic> viewportRaw = parser.safeMap(
-      parser.readValueCaseInsensitive(
-            safeJson,
-            <String>['viewport'],
-          ) ??
+      parser.readValueCaseInsensitive(safeJson, <String>['viewport']) ??
           <String, dynamic>{},
     );
     final List<dynamic> rawElements = parser.safeList(
-      parser.readValueCaseInsensitive(
-            safeJson,
-            <String>['elements'],
-          ) ??
+      parser.readValueCaseInsensitive(safeJson, <String>['elements']) ??
           <dynamic>[],
     );
     return GeometryScene(
-      viewport: Viewport.fromJson(
-        viewportRaw,
-        parser: parser,
-      ),
+      viewport: Viewport.fromJson(viewportRaw, parser: parser),
       elements: rawElements
           .map(
-            (dynamic item) => GeometryElement.fromJson(
-              parser.safeMap(item),
-              parser: parser,
-            ),
+            (dynamic item) =>
+                GeometryElement.fromJson(parser.safeMap(item), parser: parser),
           )
           .toList(),
     );

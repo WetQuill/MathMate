@@ -15,9 +15,6 @@ class VideoInfo {
     required this.keywords,
   });
 
-  String get url =>
-      'https://www.bilibili.com/video/$bvId/?spm_id_from=333.337.search-card.all.click&vd_source=5d6add47d5117935b61df3a47eaa2266';
-
   Future<String> getCoverUrl() async {
     if (_coverUrl != null) return _coverUrl!;
 
@@ -101,8 +98,25 @@ final List<VideoInfo> allVideos = <VideoInfo>[
   ),
 ];
 
+// 获取三个学段各一个代表视频（用于未选择年级时）
+VideoInfo _getPrimaryVideoByStage(String stage) {
+  for (final VideoInfo video in allVideos) {
+    if (video.keywords.contains(stage)) {
+      return video;
+    }
+  }
+  return allVideos.first;
+}
+
 List<VideoInfo> getVideosByGrade(int? grade) {
-  if (grade == null) return <VideoInfo>[];
+  if (grade == null) {
+    // 未选择年级时，返回三个学段各一个视频
+    return <VideoInfo>[
+      _getPrimaryVideoByStage('高中'),
+      _getPrimaryVideoByStage('初中'),
+      _getPrimaryVideoByStage('小学'),
+    ];
+  }
 
   if (grade >= 1 && grade <= 6) {
     return allVideos.where((v) => v.keywords.contains('小学')).toList();
@@ -120,8 +134,9 @@ List<VideoInfo> getVideosByKeywords(List<String> keywords) {
   final List<VideoInfo> matched = <VideoInfo>[];
   for (final VideoInfo video in allVideos) {
     for (final String keyword in keywords) {
-      if (video.keywords
-          .any((k) => k.toLowerCase().contains(keyword.toLowerCase()))) {
+      if (video.keywords.any(
+        (k) => k.toLowerCase().contains(keyword.toLowerCase()),
+      )) {
         matched.add(video);
         break;
       }

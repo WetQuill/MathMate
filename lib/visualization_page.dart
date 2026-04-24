@@ -30,9 +30,9 @@ class _VisualizationPageState extends State<VisualizationPage> {
           child: JxgWebView(
             scene: widget.scene,
             onEngineError: (String message) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text(message)),
-              );
+              ScaffoldMessenger.of(
+                context,
+              ).showSnackBar(SnackBar(content: Text(message)));
             },
           ),
         ),

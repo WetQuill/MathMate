@@ -46,8 +46,8 @@ class VisualizationService {
         );
       }
 
-      final GeometryValidationResult validation =
-          const GeometryValidator().validate(decoded);
+      final GeometryValidationResult validation = const GeometryValidator()
+          .validate(decoded);
       if (!validation.isValid || validation.scene == null) {
         return VisualizeResult(
           scene: null,
@@ -56,10 +56,7 @@ class VisualizationService {
         );
       }
 
-      return VisualizeResult(
-        scene: validation.scene!.toJson(),
-        rawOutput: raw,
-      );
+      return VisualizeResult(scene: validation.scene!.toJson(), rawOutput: raw);
     } catch (e) {
       return VisualizeResult(
         scene: null,

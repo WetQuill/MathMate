@@ -16,25 +16,25 @@ class _GradeSelectionPageState extends State<GradeSelectionPage> {
 
   static const Map<String, List<Map<String, dynamic>>> _gradeData =
       <String, List<Map<String, dynamic>>>{
-    '小学': <Map<String, dynamic>>[
-      <String, dynamic>{'label': '一年级', 'value': 1},
-      <String, dynamic>{'label': '二年级', 'value': 2},
-      <String, dynamic>{'label': '三年级', 'value': 3},
-      <String, dynamic>{'label': '四年级', 'value': 4},
-      <String, dynamic>{'label': '五年级', 'value': 5},
-      <String, dynamic>{'label': '六年级', 'value': 6},
-    ],
-    '初中': <Map<String, dynamic>>[
-      <String, dynamic>{'label': '初一', 'value': 7},
-      <String, dynamic>{'label': '初二', 'value': 8},
-      <String, dynamic>{'label': '初三', 'value': 9},
-    ],
-    '高中': <Map<String, dynamic>>[
-      <String, dynamic>{'label': '高一', 'value': 10},
-      <String, dynamic>{'label': '高二', 'value': 11},
-      <String, dynamic>{'label': '高三', 'value': 12},
-    ],
-  };
+        '小学': <Map<String, dynamic>>[
+          <String, dynamic>{'label': '一年级', 'value': 1},
+          <String, dynamic>{'label': '二年级', 'value': 2},
+          <String, dynamic>{'label': '三年级', 'value': 3},
+          <String, dynamic>{'label': '四年级', 'value': 4},
+          <String, dynamic>{'label': '五年级', 'value': 5},
+          <String, dynamic>{'label': '六年级', 'value': 6},
+        ],
+        '初中': <Map<String, dynamic>>[
+          <String, dynamic>{'label': '初一', 'value': 7},
+          <String, dynamic>{'label': '初二', 'value': 8},
+          <String, dynamic>{'label': '初三', 'value': 9},
+        ],
+        '高中': <Map<String, dynamic>>[
+          <String, dynamic>{'label': '高一', 'value': 10},
+          <String, dynamic>{'label': '高二', 'value': 11},
+          <String, dynamic>{'label': '高三', 'value': 12},
+        ],
+      };
 
   @override
   void initState() {
@@ -80,6 +80,28 @@ class _GradeSelectionPageState extends State<GradeSelectionPage> {
         backgroundColor: Colors.transparent,
         elevation: 0,
         foregroundColor: const Color(0xFF3F51B5),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () async {
+              final NavigatorState navigator = Navigator.of(context);
+              await HistoryRepository.instance.setFirstLaunchComplete();
+              if (mounted) {
+                navigator.pushAndRemoveUntil(
+                  MaterialPageRoute(builder: (_) => const MainScreen()),
+                  (Route<dynamic> route) => false,
+                );
+              }
+            },
+            child: const Text(
+              '跳过',
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+                color: Color(0xFF3F51B5),
+              ),
+            ),
+          ),
+        ],
       ),
       body: SafeArea(
         child: ListView(
@@ -103,10 +125,7 @@ class _GradeSelectionPageState extends State<GradeSelectionPage> {
                 children: <Widget>[
                   const Text(
                     '请选择您的年级',
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w800,
-                    ),
+                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
                   ),
                   const SizedBox(height: 8),
                   Text(
@@ -158,9 +177,7 @@ class _GradeSelectionPageState extends State<GradeSelectionPage> {
                         navigator.pop(_selectedGrade);
                       } else {
                         navigator.pushAndRemoveUntil(
-                          MaterialPageRoute(
-                            builder: (_) => const MainScreen(),
-                          ),
+                          MaterialPageRoute(builder: (_) => const MainScreen()),
                           (Route<dynamic> route) => false,
                         );
                       }
@@ -236,10 +253,7 @@ class _GradeSelectionPageState extends State<GradeSelectionPage> {
         const SizedBox(width: 10),
         Text(
           title,
-          style: const TextStyle(
-            fontSize: 17,
-            fontWeight: FontWeight.w700,
-          ),
+          style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
         ),
       ],
     );
@@ -259,10 +273,7 @@ class _GradeSelectionPageState extends State<GradeSelectionPage> {
           },
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 200),
-            padding: const EdgeInsets.symmetric(
-              horizontal: 18,
-              vertical: 12,
-            ),
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
             decoration: BoxDecoration(
               color: isSelected ? const Color(0xFF3F51B5) : Colors.white,
               borderRadius: BorderRadius.circular(12),

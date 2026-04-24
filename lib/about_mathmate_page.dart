@@ -33,10 +33,7 @@ class AboutMathMatePage extends StatelessWidget {
                 style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
               ),
               SizedBox(height: 6),
-              Text(
-                'Version 1.0.0',
-                style: TextStyle(color: Color(0xFF8E98A8)),
-              ),
+              Text('Version 1.0.0', style: TextStyle(color: Color(0xFF8E98A8))),
               SizedBox(height: 12),
               Text(
                 '拍照识别 + AI 解题 + 几何可视化\n让数学学习更直观。',

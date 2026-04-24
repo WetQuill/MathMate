@@ -115,9 +115,7 @@ class _BeautifulResultPageState extends State<BeautifulResultPage> {
       _geometryScene = visualize?.scene;
       _geometryMessage = geometryMessage;
       _stageErrors = List<String>.from(result.stageErrors);
-      _statusMessage = _stageErrors.isEmpty
-          ? '处理完成'
-          : '部分阶段失败，请检查下方提示';
+      _statusMessage = _stageErrors.isEmpty ? '处理完成' : '部分阶段失败，请检查下方提示';
     });
 
     if (result.recognize != null) {
@@ -141,8 +139,8 @@ class _BeautifulResultPageState extends State<BeautifulResultPage> {
     Map<String, dynamic>? validatedScene;
     String? geometryMessage;
     if (normalizedScene != null) {
-      final GeometryValidationResult validation =
-          const GeometryValidator().validate(normalizedScene);
+      final GeometryValidationResult validation = const GeometryValidator()
+          .validate(normalizedScene);
       if (validation.isValid && validation.scene != null) {
         validatedScene = validation.scene!.toJson();
       } else {
@@ -157,8 +155,8 @@ class _BeautifulResultPageState extends State<BeautifulResultPage> {
       _solutionMarkdown = history.solutionMarkdown;
       _formulaPreview = cleanedLatex.isEmpty ? null : cleanedLatex;
       _geometryScene = validatedScene;
-      _geometryMessage = geometryMessage ??
-          (_geometryScene == null ? '历史记录中无可视化数据。' : null);
+      _geometryMessage =
+          geometryMessage ?? (_geometryScene == null ? '历史记录中无可视化数据。' : null);
       _stageErrors = <String>[];
     });
   }
@@ -360,7 +358,8 @@ class _BeautifulResultPageState extends State<BeautifulResultPage> {
                     : '（解题阶段未返回内容）',
                 style: const pw.TextStyle(fontSize: 12),
               ),
-              if (_formulaPreview != null && _formulaPreview!.isNotEmpty) ...<pw.Widget>[
+              if (_formulaPreview != null &&
+                  _formulaPreview!.isNotEmpty) ...<pw.Widget>[
                 pw.SizedBox(height: 20),
                 pw.Header(
                   level: 1,
@@ -431,16 +430,87 @@ class _BeautifulResultPageState extends State<BeautifulResultPage> {
 
   String _cleanLatexForPdf(String latex) {
     return latex
-        .replaceAll(r'\begin{cases}', '')
-        .replaceAll(r'\end{cases}', '')
-        .replaceAll(r'\begin{aligned}', '')
-        .replaceAll(r'\end{aligned}', '')
-        .replaceAll(r'\\', '\n')
-        .replaceAll(r'\ ', ' ')
-        .replaceAll(r'\{', '{')
-        .replaceAll(r'\}', '}')
+        .replaceAll(RegExp(r'\\frac\{([^}]+)\}\{([^}]+)\}'), r'($1)/($2)')
+        .replaceAll(RegExp(r'\\sqrt\{([^}]+)\}'), r'√($1)')
+        .replaceAllMapped(RegExp(r'\\sqrt(\d)'), (Match m) => '√${m[1]}')
+        .replaceAll(r'\\times', '×')
+        .replaceAll(r'\\div', '÷')
+        .replaceAll(r'\\pm', '±')
+        .replaceAll(r'\\mp', '∓')
+        .replaceAll(r'\\leq', '≤')
+        .replaceAll(r'\\geq', '≥')
+        .replaceAll(r'\\neq', '≠')
+        .replaceAll(r'\\approx', '≈')
+        .replaceAll(r'\\equiv', '≡')
+        .replaceAll(r'\\infty', '∞')
+        .replaceAll(r'\\alpha', 'α')
+        .replaceAll(r'\\beta', 'β')
+        .replaceAll(r'\\gamma', 'γ')
+        .replaceAll(r'\\delta', 'δ')
+        .replaceAll(r'\\pi', 'π')
+        .replaceAll(r'\\theta', 'θ')
+        .replaceAll(r'\\lambda', 'λ')
+        .replaceAll(r'\\mu', 'μ')
+        .replaceAll(r'\\sigma', 'σ')
+        .replaceAll(r'\\phi', 'φ')
+        .replaceAll(r'\\psi', 'ψ')
+        .replaceAll(r'\\omega', 'ω')
+        .replaceAll(r'\\Delta', 'Δ')
+        .replaceAll(r'\\Sigma', 'Σ')
+        .replaceAll(r'\\Omega', 'Ω')
+        .replaceAll(r'\\cdot', '·')
+        .replaceAll(r'\\ldots', '...')
+        .replaceAll(r'\\rightarrow', '→')
+        .replaceAll(r'\\leftarrow', '←')
+        .replaceAll(r'\\Rightarrow', '⇒')
+        .replaceAll(r'\\Leftarrow', '⇐')
+        .replaceAll(r'\\leftrightarrow', '↔')
+        .replaceAll(r'\\Leftrightarrow', '⇔')
+        .replaceAll(r'\\in', '∈')
+        .replaceAll(r'\\notin', '∉')
+        .replaceAll(r'\\subset', '⊂')
+        .replaceAll(r'\\subseteq', '⊆')
+        .replaceAll(r'\\cup', '∪')
+        .replaceAll(r'\\cap', '∩')
+        .replaceAll(r'\\forall', '∀')
+        .replaceAll(r'\\exists', '∃')
+        .replaceAll(r'\\partial', '∂')
+        .replaceAll(r'\\nabla', '∇')
+        .replaceAll(r'\\begin\{cases\}', '')
+        .replaceAll(r'\\end\{cases\}', '')
+        .replaceAll(r'\\begin\{aligned\}', '')
+        .replaceAll(r'\\end\{aligned\}', '')
+        .replaceAll(r'\\begin\{matrix\}', '')
+        .replaceAll(r'\\end\{matrix\}', '')
+        .replaceAll(r'\\begin\{bmatrix\}', '[')
+        .replaceAll(r'\\end\{bmatrix\}', ']')
+        .replaceAll(r'\\begin\{pmatrix\}', '(')
+        .replaceAll(r'\\end\{pmatrix\}', ')')
+        .replaceAll(r'\\begin\{vmatrix\}', '|')
+        .replaceAll(r'\\end\{vmatrix\}', '|')
+        .replaceAll(r'\\begin\{smallmatrix\}', '')
+        .replaceAll(r'\\end\{smallmatrix\}', '')
+        .replaceAll(r'\\left', '')
+        .replaceAll(r'\\right', '')
+        .replaceAll(r'\\ ', ' ')
+        .replaceAll(r'\\quad', '  ')
+        .replaceAll(r'\\qquad', '    ')
+        .replaceAll(r'\\\\', '\n')
+        .replaceAll(r'\\\{', '{')
+        .replaceAll(r'\\\}', '}')
+        .replaceAll(r'\{', '')
+        .replaceAll(r'\}', '')
         .replaceAll(r'\_', '_')
         .replaceAll(r'\^', '^')
+        .replaceAll(RegExp(r'\\text\{([^}]+)\}'), r'$1')
+        .replaceAll(RegExp(r'\\textbf\{([^}]+)\}'), r'$1')
+        .replaceAll(RegExp(r'\\textit\{([^}]+)\}'), r'$1')
+        .replaceAll(RegExp(r'\\mathsf\{([^}]+)\}'), r'$1')
+        .replaceAll(RegExp(r'\\mathrm\{([^}]+)\}'), r'$1')
+        .replaceAll(RegExp(r'\\mathbf\{([^}]+)\}'), r'$1')
+        .replaceAll(RegExp(r'\\mathit\{([^}]+)\}'), r'$1')
+        .replaceAll(r'\\_', '_')
+        .replaceAll(r'\\%', '%')
         .trim();
   }
 
@@ -501,10 +571,12 @@ class _BeautifulResultPageState extends State<BeautifulResultPage> {
               : Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: blocks
-                      .map((Widget w) => Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 4),
-                            child: w,
-                          ))
+                      .map(
+                        (Widget w) => Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 4),
+                          child: w,
+                        ),
+                      )
                       .toList(),
                 ),
         ),
@@ -519,7 +591,9 @@ class _BeautifulResultPageState extends State<BeautifulResultPage> {
     int lastEnd = 0;
     for (final RegExpMatch match in displayMathRegex.allMatches(content)) {
       if (match.start > lastEnd) {
-        final String textBefore = content.substring(lastEnd, match.start).trim();
+        final String textBefore = content
+            .substring(lastEnd, match.start)
+            .trim();
         if (textBefore.isNotEmpty) {
           widgets.add(_buildMarkdownText(textBefore));
         }
@@ -531,11 +605,18 @@ class _BeautifulResultPageState extends State<BeautifulResultPage> {
           widgets.add(
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 8),
-              child: Center(child: Math.tex(latex, textStyle: const TextStyle(fontSize: 16))),
+              child: Center(
+                child: Math.tex(
+                  latex,
+                  textStyle: const TextStyle(fontSize: 16),
+                ),
+              ),
             ),
           );
         } catch (e) {
-          widgets.add(Text(latex, style: const TextStyle(fontFamily: 'monospace')));
+          widgets.add(
+            Text(latex, style: const TextStyle(fontFamily: 'monospace')),
+          );
         }
       }
 
@@ -560,9 +641,7 @@ class _BeautifulResultPageState extends State<BeautifulResultPage> {
     return MarkdownBody(
       data: text,
       selectable: true,
-      styleSheet: MarkdownStyleSheet.fromTheme(
-        Theme.of(context),
-      ).copyWith(
+      styleSheet: MarkdownStyleSheet.fromTheme(Theme.of(context)).copyWith(
         p: const TextStyle(fontSize: 14, height: 1.45),
         h1: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
         h2: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
@@ -701,10 +780,16 @@ class _BeautifulResultPageState extends State<BeautifulResultPage> {
                                   ),
                                 );
                               },
-                              icon: const Icon(Icons.visibility_outlined),
-                              label: const Text('查看几何可视化'),
+                              icon: const Icon(
+                                Icons.visibility_outlined,
+                                color: Colors.black87,
+                              ),
+                              label: const Text(
+                                '查看几何可视化',
+                                style: TextStyle(color: Colors.black87),
+                              ),
                               style: ElevatedButton.styleFrom(
-                                backgroundColor: const Color(0xFF3F51B5),
+                                backgroundColor: const Color(0xFF90CAF9),
                               ),
                             ),
                           )
